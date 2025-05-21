@@ -120,15 +120,7 @@ int main(int argc, char *argv[]) {
   }
 
   outs() << "Slicing\n";
-  // outs() << module->getFunctionList().size() << " function(s)\n";
-  // for (auto &func : *module) {
-  //   if (func.isDeclaration())
-  //     continue;
-  //   for (auto &BB : func) {
-  //     for (auto &inst : BB) {
-  //     }
-  //   }
-  // }
+  outs() << module->getFunctionList().size() << " function(s)\n";
   auto start = std::chrono::high_resolution_clock::now();
   auto *mainFunc = module->getFunction("main");
   Instruction *ret = nullptr;
@@ -143,9 +135,16 @@ int main(int argc, char *argv[]) {
       break;
   }
   auto slice = sliceInst(ret);
+  printSlice(*module, slice);
+  // for (auto &func : *module) {
+  //   for (auto &BB : func) {
+  //     for (auto &inst : BB) {
+  //       auto slice = sliceInst(&inst);
+  //     }
+  //   }
+  // }
   auto end = std::chrono::high_resolution_clock::now();
   auto duration =
       std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-  printSlice(*module, slice);
   outs() << "Analysis time: " << duration.count() << " us\n";
 }
