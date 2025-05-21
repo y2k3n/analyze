@@ -21,8 +21,14 @@ using namespace llvm;
 std::unordered_set<Value *> sliceInst(Instruction *root) {
   std::unordered_set<Value *> slice;
   std::queue<Instruction *> worklist;
-  worklist.push(root);
-  slice.insert(root);
+
+  auto add2Slice = [&](Instruction *i) {
+    if (slice.insert(i).second) {
+      worklist.push(i);
+    }
+  };
+
+  add2Slice(root);
 
   while (!worklist.empty()) {
     auto inst = worklist.front();
@@ -32,9 +38,7 @@ std::unordered_set<Value *> sliceInst(Instruction *root) {
       for (int i = 0; i < phi->getNumIncomingValues(); ++i) {
         auto *ival = phi->getIncomingValue(i);
         if (auto *ivalInst = dyn_cast<Instruction>(ival)) {
-          if (slice.insert(ivalInst).second) {
-            worklist.push(ivalInst);
-          }
+          add2Slice(ivalInst);
         }
         auto *iBB = phi->getIncomingBlock(i);
         Instruction *term = iBB->getTerminator();
@@ -43,20 +47,40 @@ std::unordered_set<Value *> sliceInst(Instruction *root) {
         }
       }
       continue;
-    }
-    // non phi case
-    for (auto &use : inst->operands()) {
-      if (auto *op = dyn_cast<Instruction>(use)) {
-        if (slice.insert(op).second) {
-          worklist.push(op);
+
+    } else if (auto *call = dyn_cast<CallInst>(inst)) {
+      auto *cf = call->getCalledFunction();
+      if (cf && !cf->isDeclaration()) {
+        for (int i = 0; i < call->arg_size(); ++i) {
+          if (i < cf->arg_size()) {
+            auto *arg = cf->getArg(i);
+            if (auto *argInst = dyn_cast<Instruction>(arg)) {
+              add2Slice(argInst);
+            }
+          }
+        }
+        if (!cf->getReturnType()->isVoidTy()) {
+          for (auto &cfBB : *cf) {
+            for (auto &cfinst : cfBB) {
+              if (auto *ret = llvm::dyn_cast<llvm::ReturnInst>(&cfinst)) {
+                add2Slice(ret);
+              }
+            }
+          }
+        }
+      }
+
+    } else {
+      for (auto &use : inst->operands()) {
+        if (auto *op = dyn_cast<Instruction>(use)) {
+          add2Slice(op);
         }
       }
     }
+
     for (BasicBlock *predBB : predecessors(inst->getParent())) {
       auto *term = predBB->getTerminator();
-      if (slice.insert(term).second) {
-        worklist.push(term);
-      }
+      add2Slice(term);
     }
     // iter end
   }
