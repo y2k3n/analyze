@@ -7,7 +7,6 @@
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Instruction.h"
 #include "llvm/IR/Instructions.h"
-#include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/User.h"
 #include "llvm/IR/Value.h"
@@ -17,7 +16,6 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include <chrono>
-#include <llvm-19/llvm/Support/Casting.h>
 #include <queue>
 #include <set>
 #include <unordered_map>
@@ -28,57 +26,79 @@ using namespace llvm;
 std::unordered_map<Instruction *, DenseSet<Value *>> callMap;
 std::unordered_map<Value *, DenseSet<Value *>> points2;
 
-void analyzePtr(Function& func, Value *val) {
+void analyzePtr(Value *val) {
   if (points2.find(val) != points2.end()) {
     return;
   }
 
   if (isa<Function>(val) || isa<Argument>(val)) {
-    points2[val]={val};
+    points2[val] = {val};
 
   } else if (auto *cast = dyn_cast<CastInst>(val)) {
     auto *src = cast->getOperand(0);
-    analyzePtr(func, src);
+    analyzePtr(src);
     points2[cast] = points2[src];
 
   } else if (auto *phi = dyn_cast<PHINode>(val)) {
     for (int i = 0; i < phi->getNumIncomingValues(); ++i) {
       Value *inval = phi->getIncomingValue(i);
-      if (isa<Instruction>(inval) || isa<Argument>(inval)) {
-        analyzePtr(func, inval);
-        points2[phi].insert(points2[inval].begin(), points2[inval].end());
-      }
+      // if (isa<Instruction>(inval) || isa<Argument>(inval)) {
+      analyzePtr(inval);
+      points2[phi].insert(points2[inval].begin(), points2[inval].end());
+      // }
     }
 
   } else if (auto *select = dyn_cast<SelectInst>(val)) {
     Value *tval = select->getTrueValue();
     Value *fval = select->getFalseValue();
     // if (isa<Instruction>(tval) || isa<Argument>(tval)) {
-    analyzePtr(func, tval);
+    analyzePtr(tval);
     points2[select].insert(points2[tval].begin(), points2[tval].end());
     // }
     // if (isa<Instruction>(fval) || isa<Argument>(fval)) {
-    analyzePtr(func, fval);
+    analyzePtr(fval);
     points2[select].insert(points2[fval].begin(), points2[fval].end());
     // }
 
   } else if (auto *load = dyn_cast<LoadInst>(val)) {
     auto *loadptr = load->getPointerOperand();
-    for (auto &BB : func) {
-      for (auto &inst : BB) {
-        if (auto *store = dyn_cast<StoreInst>(&inst)) {
-          if (store->getPointerOperand() == loadptr) {
-            auto *stval = store->getValueOperand();
-            analyzePtr(func, stval);
-            points2[load].insert(points2[stval].begin(),
-                                   points2[stval].end());
-          }
+    analyzePtr(loadptr);
+    points2[load] = points2[loadptr];
+    for (auto *user : loadptr->users()) {
+      if (auto *store = dyn_cast<StoreInst>(user)) {
+        if (store->getPointerOperand() == loadptr) {
+          auto *stval = store->getValueOperand();
+          analyzePtr(stval);
+          points2[load].insert(points2[stval].begin(), points2[stval].end());
         }
       }
     }
 
+  } else if (auto *global = dyn_cast<GlobalVariable>(val)) {
+    points2[val] = {val};
+    if (global->hasInitializer()) {
+      Value *initval = global->getInitializer();
+      analyzePtr(initval);
+      points2[val].insert(points2[initval].begin(), points2[initval].end());
+    }
+    for (auto *user : global->users()) {
+      if (auto *store = dyn_cast<StoreInst>(user)) {
+        if (store->getPointerOperand() == global) {
+          Value *storedVal = store->getValueOperand();
+          analyzePtr(storedVal);
+          points2[val].insert(points2[storedVal].begin(),
+                              points2[storedVal].end());
+        }
+      }
+    }
+
+  } else if (auto *gep = dyn_cast<GetElementPtrInst>(val)) {
+    Value *baseptr = gep->getPointerOperand();
+    analyzePtr( baseptr);
+    points2[gep] = points2[baseptr];
+
   } else {
-    points2[val]={val};
+    points2[val] = {val};
   }
 }
 
@@ -93,7 +113,7 @@ void analyzeIntra(Function &func) {
         } else {
           // indirect
           auto *callptr = call->getCalledOperand();
-          analyzePtr(func, callptr);
+          analyzePtr(callptr);
           callMap[call] = points2[callptr];
         }
       }
@@ -101,7 +121,7 @@ void analyzeIntra(Function &func) {
   }
 }
 
-void print(){
+void print() {
   for (auto &[key, targets] : callMap) {
     outs() << *key << "\n->";
     for (auto *target : targets) {
@@ -139,11 +159,11 @@ int main(int argc, char *argv[]) {
   outs() << module->getFunctionList().size() << " function(s)\n";
   auto start = std::chrono::high_resolution_clock::now();
 
-  for (auto& func : *module){
+  for (auto &func : *module) {
     if (func.isDeclaration())
       continue;
     callMap.clear();
-    points2.clear();
+    // points2.clear();
     analyzeIntra(func);
 
     outs() << "\nFunction: " << func.getName() << "\n";
