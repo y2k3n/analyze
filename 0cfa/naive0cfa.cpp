@@ -21,6 +21,7 @@
 #include <set>
 #include <unordered_map>
 #include <unordered_set>
+#include <fstream>
 
 using namespace llvm;
 
@@ -151,6 +152,10 @@ void print() {
   }
 }
 
+void analyzeThread() {
+  
+}
+
 int main(int argc, char *argv[]) {
   InitLLVM X(argc, argv);
   if (argc < 2) {
@@ -169,15 +174,50 @@ int main(int argc, char *argv[]) {
 
   outs() << "Intra-Procedual 0-CFA" << "\n";
   outs() << module->getFunctionList().size() << " function(s)\n";
+
+#ifdef CSV
+  std::string csvname = std::string(argv[1]) + ".csv";
+  std::ofstream csv(csvname);
+  csv << "name,size,inum,time(us)\n";
+#ifndef RUN_COUNT
+#define RUN_COUNT 1
+#endif
+#endif
+
   auto start = std::chrono::high_resolution_clock::now();
 
   for (auto &func : *module) {
     if (func.isDeclaration())
       continue;
-    // callMap.clear();
-    // points2.clear();
-    // visited.clear();
-    analyzeIntra(func);
+#ifdef CSV
+    std::string fname = func.getName().str();
+    size_t fsize = func.size();
+    int instNum = 0;
+    for (BasicBlock &BB : func) {
+      instNum += BB.size();
+    }
+    int tftime = 0;
+    for (int r = 0; r < RUN_COUNT; ++r) {
+      callMap.clear();
+      points2.clear();
+      visited.clear();
+
+      auto fstart = std::chrono::high_resolution_clock::now();
+#endif
+
+      analyzeIntra(func);
+
+#ifdef CSV
+      auto fend = std::chrono::high_resolution_clock::now();
+      auto ftime =
+          std::chrono::duration_cast<std::chrono::microseconds>(fend - fstart)
+              .count();
+      tftime += ftime;
+    }
+    tftime /= RUN_COUNT;
+    csv << fname << "," << fsize << "," << instNum << "," << tftime << "\n";
+#endif
+
 #ifdef PRINT_RESULTS
     outs() << "\nFunction: " << func.getName() << "\n";
     print();
