@@ -42,11 +42,25 @@ std::unordered_set<Value *> sliceInst(Instruction *root) {
         }
         auto *iBB = phi->getIncomingBlock(i);
         Instruction *term = iBB->getTerminator();
-        if (slice.insert(term).second) {
-          worklist.push(term);
-        }
+        add2Slice(term);
       }
       continue;
+
+    } else if (auto *select = dyn_cast<SelectInst>(&inst)) {
+      Value *tval = select->getTrueValue();
+      Value *fval = select->getFalseValue();
+      if (auto *tvalInst = dyn_cast<Instruction>(tval)) {
+        add2Slice(tvalInst);
+      }
+      if (auto *fvalInst = dyn_cast<Instruction>(fval)) {
+        add2Slice(fvalInst);
+      }
+
+    } else if (auto *cast = dyn_cast<CastInst>(&inst)) {
+      Value *src = cast->getOperand(0);
+      if (auto *srcInst = dyn_cast<Instruction>(src)) {
+        add2Slice(srcInst);
+      }
 
     } else if (auto *call = dyn_cast<CallInst>(inst)) {
       auto *cf = call->getCalledFunction();
@@ -69,7 +83,6 @@ std::unordered_set<Value *> sliceInst(Instruction *root) {
           }
         }
       }
-
     } else {
       for (auto &use : inst->operands()) {
         if (auto *op = dyn_cast<Instruction>(use)) {
