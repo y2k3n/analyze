@@ -4,6 +4,7 @@
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/IR/Argument.h"
 #include "llvm/IR/CFG.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Instruction.h"
 #include "llvm/IR/Instructions.h"
@@ -25,11 +26,16 @@ using namespace llvm;
 
 std::unordered_map<Instruction *, DenseSet<Value *>> callMap;
 std::unordered_map<Value *, DenseSet<Value *>> points2;
+std::unordered_set<Value *> visited;
 
 void analyzePtr(Value *val) {
-  if (points2.find(val) != points2.end()) {
+  if (visited.find(val) != visited.end()) {
     return;
   }
+  visited.insert(val);
+  // if (points2.find(val) != points2.end()) {
+  //   return;
+  // }
 
   if (isa<Function>(val) || isa<Argument>(val)) {
     points2[val] = {val};
@@ -94,8 +100,14 @@ void analyzePtr(Value *val) {
 
   } else if (auto *gep = dyn_cast<GetElementPtrInst>(val)) {
     Value *baseptr = gep->getPointerOperand();
-    analyzePtr( baseptr);
+    analyzePtr(baseptr);
     points2[gep] = points2[baseptr];
+
+  } else if (auto *cexpr = dyn_cast<ConstantExpr>(val)) {
+    Instruction *ceinst = cexpr->getAsInstruction();
+    analyzePtr(ceinst);
+    points2[val] = points2[ceinst];
+    ceinst->deleteValue();
 
   } else {
     points2[val] = {val};
@@ -106,16 +118,16 @@ void analyzeIntra(Function &func) {
   for (auto &BB : func) {
     for (auto &inst : BB) {
       if (auto *call = dyn_cast<CallInst>(&inst)) {
-        auto *called = call->getCalledFunction();
-        if (called != nullptr) {
-          // direct call
-          callMap[call] = {called};
-        } else {
-          // indirect
-          auto *callptr = call->getCalledOperand();
-          analyzePtr(callptr);
-          callMap[call] = points2[callptr];
-        }
+        // auto *called = call->getCalledFunction();
+        // if (called != nullptr) {
+        //   // direct call
+        //   callMap[call] = {called};
+        // } else {
+        // indirect
+        auto *callptr = call->getCalledOperand();
+        analyzePtr(callptr);
+        callMap[call] = points2[callptr];
+        // }
       }
     }
   }
@@ -162,13 +174,15 @@ int main(int argc, char *argv[]) {
   for (auto &func : *module) {
     if (func.isDeclaration())
       continue;
-    callMap.clear();
+    // callMap.clear();
     // points2.clear();
+    // visited.clear();
     analyzeIntra(func);
-
+#ifdef PRINT_RESULTS
     outs() << "\nFunction: " << func.getName() << "\n";
     print();
     outs() << "******************************** " << func.getName() << "\n";
+#endif
   }
 
   auto end = std::chrono::high_resolution_clock::now();
@@ -176,8 +190,4 @@ int main(int argc, char *argv[]) {
   auto duration =
       std::chrono::duration_cast<std::chrono::microseconds>(end - start);
   outs() << "Analysis time: " << duration.count() << " us\n";
-
-#ifdef PRINT_RESULTS
-  print();
-#endif
 }
