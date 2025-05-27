@@ -31,7 +31,7 @@ std::unordered_set<Value *> sliceInst(Instruction *root) {
   add2Slice(root);
 
   while (!worklist.empty()) {
-    auto inst = worklist.front();
+    auto *inst = worklist.front();
     worklist.pop();
 
     if (auto *phi = dyn_cast<PHINode>(inst)) {
@@ -46,7 +46,7 @@ std::unordered_set<Value *> sliceInst(Instruction *root) {
       }
       continue;
 
-    } else if (auto *select = dyn_cast<SelectInst>(&inst)) {
+    } else if (auto *select = dyn_cast<SelectInst>(inst)) {
       Value *tval = select->getTrueValue();
       Value *fval = select->getFalseValue();
       if (auto *tvalInst = dyn_cast<Instruction>(tval)) {
@@ -56,7 +56,7 @@ std::unordered_set<Value *> sliceInst(Instruction *root) {
         add2Slice(fvalInst);
       }
 
-    } else if (auto *cast = dyn_cast<CastInst>(&inst)) {
+    } else if (auto *cast = dyn_cast<CastInst>(inst)) {
       Value *src = cast->getOperand(0);
       if (auto *srcInst = dyn_cast<Instruction>(src)) {
         add2Slice(srcInst);
@@ -83,6 +83,7 @@ std::unordered_set<Value *> sliceInst(Instruction *root) {
           }
         }
       }
+
     } else {
       for (auto &use : inst->operands()) {
         if (auto *op = dyn_cast<Instruction>(use)) {
