@@ -18,7 +18,7 @@
 
 using namespace llvm;
 
-std::unordered_set<Value *> sliceInst(Instruction *root) {
+std::unordered_set<Value *> backwardSlice(Instruction *root) {
   std::unordered_set<Value *> slice;
   std::queue<Instruction *> worklist;
 
@@ -136,27 +136,28 @@ int main(int argc, char *argv[]) {
   outs() << "Slicing\n";
   outs() << module->getFunctionList().size() << " function(s)\n";
   auto start = std::chrono::high_resolution_clock::now();
-  auto *mainFunc = module->getFunction("main");
-  Instruction *ret = nullptr;
-  for (auto &BB : *mainFunc) {
-    for (auto &inst : BB) {
-      if (isa<ReturnInst>(&inst)) {
-        ret = &inst;
-        break;
-      }
-    }
-    if (ret)
-      break;
-  }
-  auto slice = sliceInst(ret);
-  printSlice(*module, slice);
-  // for (auto &func : *module) {
-  //   for (auto &BB : func) {
-  //     for (auto &inst : BB) {
-  //       auto slice = sliceInst(&inst);
+  // auto *mainFunc = module->getFunction("main");
+  // Instruction *ret = nullptr;
+  // for (auto &BB : *mainFunc) {
+  //   for (auto &inst : BB) {
+  //     if (isa<ReturnInst>(&inst)) {
+  //       ret = &inst;
+  //       break;
   //     }
   //   }
+  //   if (ret)
+  //     break;
   // }
+  // auto slice = sliceInst(ret);
+  // printSlice(*module, slice);
+  for (auto &func : *module) {
+    for (auto &BB : func) {
+      for (auto &inst : BB) {
+        if (isa<GetElementPtrInst>(inst) || isa<AllocaInst>(inst))
+          backwardSlice(&inst);
+      }
+    }
+  }
   auto end = std::chrono::high_resolution_clock::now();
   auto duration =
       std::chrono::duration_cast<std::chrono::microseconds>(end - start);

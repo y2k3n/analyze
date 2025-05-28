@@ -180,7 +180,7 @@ void print(LocalData &localdata) {
   }
 }
 
-void threaded0CFA(std::mutex &Qmutex, std::priority_queue<TaskInfo> &taskQ,
+void threadedSlice(std::mutex &Qmutex, std::priority_queue<TaskInfo> &taskQ,
                   int tid) {
   auto start = std::chrono::high_resolution_clock::now();
   int max_time = 0;
