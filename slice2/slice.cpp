@@ -110,10 +110,12 @@ void backwardSlice(Value *root, std::unordered_set<Value *> &slice) {
       add2Slice(val);
     }
 
-    // for (BasicBlock *predBB : predecessors(inst->getParent())) {
-    //   auto *term = predBB->getTerminator();
-    //   add2Slice(term);
-    // }
+    if (auto *inst = dyn_cast<Instruction>(val)) {
+      for (BasicBlock *predBB : predecessors(inst->getParent())) {
+        auto *term = predBB->getTerminator();
+        add2Slice(term);
+      }
+    }
     // iter end
   }
 }
